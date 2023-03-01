@@ -37,7 +37,7 @@ def compute_score( x, w, h ):
     score[:, math.ceil(-w/2):] = 0
     score[:h//2, :] = 0
     score[math.ceil(-h/2):, :] = 0
-    print(score)
+    # print(score)
     return score
 
 

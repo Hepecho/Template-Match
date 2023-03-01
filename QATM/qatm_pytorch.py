@@ -239,8 +239,8 @@ def nms_multi(scores, w_array, h_array, thresh_list):
     # omit not-matching templates
     scores_omit = scores[maxes > 0.1 * maxes.max()]
     indices_omit = indices[maxes > 0.1 * maxes.max()]
-    print('scores_omit:{}'.format(scores_omit))
-    print('indices_omit:{}'.format(indices_omit))
+    # print('scores_omit:{}'.format(scores_omit))
+    # print('indices_omit:{}'.format(indices_omit))
     # extract candidate pixels from scores
     dots = None
     dos_indices = None
@@ -261,6 +261,9 @@ def nms_multi(scores, w_array, h_array, thresh_list):
     areas = (x2 - x1 + 1) * (y2 - y1 + 1)
     scores = scores[dots_indices, dots[0], dots[1]]
     order = scores.argsort()[::-1]
+    max_score = scores[order][0]  # for analysis.py
+    # print("scores:{}".format(scores))
+    # print("sccores[order]:{}".format(scores[order]))
     dots_indices = dots_indices[order]
     
     keep = []
@@ -285,7 +288,7 @@ def nms_multi(scores, w_array, h_array, thresh_list):
         dots_indices = dots_indices[inds + 1]
         
     boxes = np.array([[x1[keep], y1[keep]], [x2[keep], y2[keep]]]).transpose(2,0,1)
-    return boxes, np.array(keep_index)
+    return boxes, np.array(keep_index), max_score
 
 
 def plot_result_multi(image_raw, boxes, indices, show=False, save_name=None, color_list=None):
@@ -321,7 +324,7 @@ def run_one_sample(model, template, image, image_name):
         w = template.size()[-1]
         score = compute_score( gray, w, h) 
         score[score>-1e-7] = score.min()
-        score = np.exp(score / (h*w)) # reverse number range back after computing geometry average
+        score = np.exp(score / (h*w))  # reverse number range back after computing geometry average
         scores.append(score)
     return np.array(scores)
 
@@ -334,7 +337,6 @@ def run_multi_sample(model, dataset):
     for data in dataset:
         score = run_one_sample(model, data['template'], data['image'], data['image_name'])
         scores.append(score)
-
         w_array.append(data['template_w'])
         h_array.append(data['template_h'])
         thresh_list.append(data['thresh'])
@@ -345,7 +347,7 @@ model = CreateModel(model=models.vgg19(pretrained=True).features, alpha=25, use_
 
 scores, w_array, h_array, thresh_list = run_multi_sample(model, dataset)
 
-boxes, indices = nms_multi(scores, w_array, h_array, thresh_list)
+boxes, indices, _ = nms_multi(scores, w_array, h_array, thresh_list)
 
 d_img = plot_result_multi(dataset.image_raw, boxes, indices, show=True, save_name='result_sample.png')
 

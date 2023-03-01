@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import sys
 from PIL import Image
+import os
+import shutil
 
 def affine_transform(src):
     # 获取图像shape
@@ -119,37 +121,57 @@ def imgconvert(imag_path, save_path, flag='L'):
     print(imgret.getbands())
     imgret.save(save_path)
 
-def bg2white(imag_path, save_path):
+def bgaddedge(imag_path, save_path):
     imgsrc = cv2.imread(imag_path, 1)
     height, width, _ = imgsrc.shape
     dst = np.zeros((height, width, 3), np.uint8)
     for h in range(0, height):
         for j in range(0, width):
-            (b, g, r) = imgsrc[h, j]
-            if (b, g, r) == (0, 0, 0):  # 黑色
-                imgsrc[h, j] = (255, 255, 255)  # 红色
+            if h <= 10 or h >= height-11 or j <= 10 or j >= width-11:
+                imgsrc[h, j] = (255, 255, 255)  # 白色
             dst[h, j] = imgsrc[h, j]
     cv2.imwrite(save_path, dst)
+
+def create_datatree():
+    template_path = './samples/template'
+    image_path = './samples/image'
+    fake_path = './samples/Samples_right/'
+    true_path = './samples/Samples_left/'
+    names = os.listdir(fake_path)
+    for name in names:
+        sub_tpath = os.path.join(template_path, name[:-4])
+        sub_ipath = os.path.join(image_path, name[:-4])
+        if not os.path.exists(sub_tpath):
+            os.makedirs(sub_tpath)
+        if not os.path.exists(sub_ipath):
+            os.makedirs(sub_ipath)
+        shutil.copy(true_path+name, sub_tpath)
+        new_file = os.path.join(sub_ipath, name[:-4]+'_fake.png')
+        shutil.copy(fake_path+name, new_file)
+        shutil.copy('./samples/Samples_left/'+name, sub_ipath)
 
 
 if __name__ == '__main__':
     needface = False
-    imag_path = './example/image/image1c.png'
-    save_path = './example/image/image1c_24.png'
+    imag_path = './example/template/T5/000016_cut2.png'
+    save_path = './example/template/T5/000016_cut.png'
     sample_path = './QATM/sample/sample1.jpg'
-    # bg2white(imag_path, imag_path)
+    create_datatree()
+    sys.exit()
+    # bgaddedge(save_path, save_path)
     # img1 = Image.open(imag_path)
     # img2 = Image.open(save_path)
-    # IMG = [img1, img2]
-    # img1 = img1.resize((384, 225), Image.BILINEAR)
-    # img1.save(save_path, dpi=(72, 72))
-    # for i in range(2):
-        # print(IMG[i].getbands())
-    # imgconvert(imag_path, save_path, 'RGB')
-    # imgsrc = cv2.imread(imag_path, 1)
+    # 前两个坐标点是左上角坐标
+    # 后两个坐标点是右下角坐标
+    # width在前， height在后
+    box = (60, 100, 300, 250)
+    # region = img1.crop(box)
+    # region.save(save_path)
+    bgaddedge(save_path, imag_path)
+    # imgconvert(save_path, save_path, 'P')
     # imgdst = cv2.resize(imgsrc, (2*imgsrc.shape[1], 2*imgsrc.shape[0]))
     # cv2.imwrite(save_path, imgdst)
-    # sys.exit()
+    sys.exit()
     # 图像输入
     bg = cv2.imread('./example/image/I4/face_24.png', 1)
     src = cv2.imread('./example/template/T3_4/image1c.png', 1)
