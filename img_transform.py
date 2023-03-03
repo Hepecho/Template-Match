@@ -121,16 +121,29 @@ def imgconvert(imag_path, save_path, flag='L'):
     print(imgret.getbands())
     imgret.save(save_path)
 
-def bgaddedge(imag_path, save_path):
+def one_bgaddedge(imag_path, save_path):
     imgsrc = cv2.imread(imag_path, 1)
+    # 填充边界
+    imgsrc = cv2.copyMakeBorder(imgsrc, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=[0, 0, 0])
     height, width, _ = imgsrc.shape
-    dst = np.zeros((height, width, 3), np.uint8)
+    # dst = np.zeros((height, width, 3), np.uint8)
+    left, top = height, width
+    right, bottom = 0, 0
     for h in range(0, height):
         for j in range(0, width):
-            if h <= 10 or h >= height-11 or j <= 10 or j >= width-11:
+            (b, g, r) = imgsrc[h, j]
+            if (b, g, r) == (0, 0, 0):  # black
                 imgsrc[h, j] = (255, 255, 255)  # 白色
-            dst[h, j] = imgsrc[h, j]
-    cv2.imwrite(save_path, dst)
+            else:  # pink
+                if h < left:
+                    left = h
+                if h > right:
+                    right = h
+                if j < top:
+                    top = j
+                if j > bottom:
+                    bottom = j
+    cv2.imwrite(save_path, imgsrc[left-1:right+2, top-1:bottom+2])
 
 def create_datatree():
     template_path = './samples/template'
@@ -138,7 +151,7 @@ def create_datatree():
     fake_path = './samples/Samples_right/'
     true_path = './samples/Samples_left/'
     names = os.listdir(fake_path)
-    for name in names:
+    for name in names:  # 子文件名
         sub_tpath = os.path.join(template_path, name[:-4])
         sub_ipath = os.path.join(image_path, name[:-4])
         if not os.path.exists(sub_tpath):
@@ -149,6 +162,11 @@ def create_datatree():
         new_file = os.path.join(sub_ipath, name[:-4]+'_fake.png')
         shutil.copy(fake_path+name, new_file)
         shutil.copy('./samples/Samples_left/'+name, sub_ipath)
+def multi_bgaddedge(parent_path):
+    names = os.listdir(parent_path)
+    for name in names:  # 子目录名
+        child_path = os.path.join(parent_path, name, name+'.png')
+        one_bgaddedge(child_path, child_path)
 
 
 if __name__ == '__main__':
@@ -156,7 +174,8 @@ if __name__ == '__main__':
     imag_path = './example/template/T5/000016_cut2.png'
     save_path = './example/template/T5/000016_cut.png'
     sample_path = './QATM/sample/sample1.jpg'
-    create_datatree()
+    # create_datatree()
+    multi_bgaddedge('./samples/template')
     sys.exit()
     # bgaddedge(save_path, save_path)
     # img1 = Image.open(imag_path)

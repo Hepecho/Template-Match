@@ -30,8 +30,8 @@ from mod import *
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='QATM Pytorch Implementation')
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('-s', '--sample_image', default='../example/image/I5/000016.png')
-    parser.add_argument('-t', '--template_images_dir', default='../example/template/T5/')
+    parser.add_argument('-s', '--sample_image', default='../samples/image/000016/000016_fake.png')
+    parser.add_argument('-t', '--template_images_dir', default='../samples/template/000016/')
     parser.add_argument('--alpha', type=float, default=25)
     parser.add_argument('--thresh_csv', type=str, default='thresh_template.csv')
     args = parser.parse_args()
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     # print(scores)
     print("nms...")
     boxes, indices, _ = nms_multi(scores, w_array, h_array, thresh_list)
-    _ = plot_result_multi(dataset.image_raw, boxes, indices, show=False, save_name='../output/result_5.png')
+    _ = plot_result_multi(dataset.image_raw, boxes, indices, show=False, save_name='../output/result_7.png')
     print("result.png was saved")
 
 
