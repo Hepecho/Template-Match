@@ -121,29 +121,33 @@ def imgconvert(imag_path, save_path, flag='L'):
     print(imgret.getbands())
     imgret.save(save_path)
 
-def one_bgaddedge(imag_path, save_path):
+def one_bgaddedge(imag_path, save_path, pix):
     imgsrc = cv2.imread(imag_path, 1)
     # 填充边界
-    imgsrc = cv2.copyMakeBorder(imgsrc, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+    imgsrc = cv2.copyMakeBorder(imgsrc, pix, pix, pix, pix, cv2.BORDER_CONSTANT, value=[0, 0, 0])
     height, width, _ = imgsrc.shape
     # dst = np.zeros((height, width, 3), np.uint8)
     left, top = height, width
     right, bottom = 0, 0
     for h in range(0, height):
-        for j in range(0, width):
-            (b, g, r) = imgsrc[h, j]
-            if (b, g, r) == (0, 0, 0):  # black
-                imgsrc[h, j] = (255, 255, 255)  # 白色
-            else:  # pink
+        for w in range(0, width):
+            (b, g, r) = imgsrc[h, w]
+            if (b, g, r) == (0, 0, 0) or (b, g, r) == (255, 255, 255):  # black or white
+                imgsrc[h, w] = (255, 255, 255)
+            else:
                 if h < left:
                     left = h
                 if h > right:
                     right = h
-                if j < top:
-                    top = j
-                if j > bottom:
-                    bottom = j
-    cv2.imwrite(save_path, imgsrc[left-1:right+2, top-1:bottom+2])
+                if w < top:
+                    top = w
+                if w > bottom:
+                    bottom = w
+    # for h in range(left-1, right+2):
+        # for w in range(top-1, bottom+2):
+            # if h == left-1 or h == right+1 or w == top-1 or w == bottom+1:
+                # imgsrc[h, w] = (255, 255, 255)
+    cv2.imwrite(save_path, imgsrc[left-pix:right+pix+1, top-pix:bottom+pix+1])
 
 def create_datatree():
     template_path = './samples/template'
@@ -162,35 +166,33 @@ def create_datatree():
         new_file = os.path.join(sub_ipath, name[:-4]+'_fake.png')
         shutil.copy(fake_path+name, new_file)
         shutil.copy('./samples/Samples_left/'+name, sub_ipath)
-def multi_bgaddedge(parent_path):
+def multi_bgaddedge(parent_path, pix):
     names = os.listdir(parent_path)
     for name in names:  # 子目录名
-        child_path = os.path.join(parent_path, name, name+'.png')
-        one_bgaddedge(child_path, child_path)
+        sub_path = os.path.join(parent_path, name[:-4])
+        if not os.path.exists(sub_path):
+            os.makedirs(sub_path)
+        shutil.copy(parent_path+name, sub_path)
+        child_path = os.path.join(sub_path, name)
+        one_bgaddedge(child_path, child_path, pix)
 
 
 if __name__ == '__main__':
     needface = False
-    imag_path = './example/template/T5/000016_cut2.png'
-    save_path = './example/template/T5/000016_cut.png'
+    imag_path = './samples_1pix/template/000016/000016.png'
+    save_path = './example/template/T6/000016_w50.png'
     sample_path = './QATM/sample/sample1.jpg'
+    # ---------------------------------------split source date file-----------------------------------------------------
     # create_datatree()
-    multi_bgaddedge('./samples/template')
+    # --------------------------------------single sample extends edge--------------------------------------------------
+    # imgsrc = cv2.imread(imag_path, 1)
+    # 填充边界
+    # imgsrc = cv2.copyMakeBorder(imgsrc, 49, 49, 49, 49, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+    # cv2.imwrite(save_path, imgsrc)
+    # ----------------------------------multi samples add x_pix edge without bg-----------------------------------------
+    multi_bgaddedge('./samples_multi/templates_PPP/', pix=2)
     sys.exit()
-    # bgaddedge(save_path, save_path)
-    # img1 = Image.open(imag_path)
-    # img2 = Image.open(save_path)
-    # 前两个坐标点是左上角坐标
-    # 后两个坐标点是右下角坐标
-    # width在前， height在后
-    box = (60, 100, 300, 250)
-    # region = img1.crop(box)
-    # region.save(save_path)
-    bgaddedge(save_path, imag_path)
-    # imgconvert(save_path, save_path, 'P')
-    # imgdst = cv2.resize(imgsrc, (2*imgsrc.shape[1], 2*imgsrc.shape[0]))
-    # cv2.imwrite(save_path, imgdst)
-    sys.exit()
+    # ------------------------------------create sample (with face mask)------------------------------------------------
     # 图像输入
     bg = cv2.imread('./example/image/I4/face_24.png', 1)
     src = cv2.imread('./example/template/T3_4/image1c.png', 1)

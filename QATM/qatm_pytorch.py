@@ -234,24 +234,28 @@ def plot_result(image_raw, boxes, show=False, save_name=None, color=(255, 0, 0))
 # ## MULTI
 
 def nms_multi(scores, w_array, h_array, thresh_list):
-    indices = np.arange(scores.shape[0])
-    maxes = np.max(scores.reshape(scores.shape[0], -1), axis=1)
+    indices = np.arange(scores.shape[0])  # template索引--t scores.shape = (t, h, w)
+    maxes = np.max(scores.reshape(scores.shape[0], -1), axis=1)  # 取每个template匹配search图片的score最大值
     # omit not-matching templates
-    scores_omit = scores[maxes > 0.1 * maxes.max()]
+    scores_omit = scores[maxes > 0.1 * maxes.max()]  # 取大于最大值90%的template (t, h, w)
+    # print("scores_omit:{}".format(scores_omit.shape))
     indices_omit = indices[maxes > 0.1 * maxes.max()]
-    # print('scores_omit:{}'.format(scores_omit))
-    # print('indices_omit:{}'.format(indices_omit))
+    # print("indices_omit:{}".format(indices_omit.shape))
     # extract candidate pixels from scores
     dots = None
     dos_indices = None
-    for index, score in zip(indices_omit, scores_omit):
-        dot = np.array(np.where(score > thresh_list[index]*score.max()))
-        if dots is None:
+    for index, score in zip(indices_omit, scores_omit):  # 对每个t和s
+        dot = np.array(np.where(score > thresh_list[index]*score.max()))  # s图片按阈值mask, np.where返回坐标元组
+        # print("dot: {}".format(dot.shape))  # (2, x)
+        if dots is None:  # 初始化
+            # print("N")
             dots = dot
             dots_indices = np.ones(dot.shape[-1]) * index
         else:
             dots = np.concatenate([dots, dot], axis=1)
             dots_indices = np.concatenate([dots_indices, np.ones(dot.shape[-1]) * index], axis=0)
+    # print(dots)
+    # print(dots_indices)
     dots_indices = dots_indices.astype(np.int)
     x1 = dots[1] - w_array[dots_indices]//2
     x2 = x1 + w_array[dots_indices]
@@ -262,9 +266,13 @@ def nms_multi(scores, w_array, h_array, thresh_list):
     scores = scores[dots_indices, dots[0], dots[1]]
     order = scores.argsort()[::-1]
     max_score = scores[order][0]  # for analysis.py
+    mean_score = scores.mean()
+    shape = scores.shape
+    # print("order:{}".format(order))
     # print("scores:{}".format(scores))
     # print("sccores[order]:{}".format(scores[order]))
     dots_indices = dots_indices[order]
+    # print("dots_indices[order]:{}".format(dots_indices))
     
     keep = []
     keep_index = []
@@ -288,7 +296,7 @@ def nms_multi(scores, w_array, h_array, thresh_list):
         dots_indices = dots_indices[inds + 1]
         
     boxes = np.array([[x1[keep], y1[keep]], [x2[keep], y2[keep]]]).transpose(2,0,1)
-    return boxes, np.array(keep_index), max_score
+    return boxes, np.array(keep_index), max_score, mean_score, shape
 
 
 def plot_result_multi(image_raw, boxes, indices, show=False, save_name=None, color_list=None):
@@ -324,7 +332,8 @@ def run_one_sample(model, template, image, image_name):
         w = template.size()[-1]
         score = compute_score( gray, w, h) 
         score[score>-1e-7] = score.min()
-        score = np.exp(score / (h*w))  # reverse number range back after computing geometry average
+        score = np.exp(score / (h*w))
+        # reverse number range back after computing geometry average 在计算几何平均数后反转数字范围
         scores.append(score)
     return np.array(scores)
 
@@ -347,7 +356,7 @@ model = CreateModel(model=models.vgg19(pretrained=True).features, alpha=25, use_
 
 scores, w_array, h_array, thresh_list = run_multi_sample(model, dataset)
 
-boxes, indices, _ = nms_multi(scores, w_array, h_array, thresh_list)
+boxes, indices, _, _ = nms_multi(scores, w_array, h_array, thresh_list)
 
 d_img = plot_result_multi(dataset.image_raw, boxes, indices, show=True, save_name='result_sample.png')
 
