@@ -12,6 +12,7 @@
 #     language: python
 #     name: python3
 # ---
+import random
 
 import numpy as np
 import cv2
@@ -26,6 +27,8 @@ import torchvision
 from torchvision import models, transforms, utils
 import copy
 from utils import *
+import math
+import sys
 # %matplotlib inline
 
 # # CONVERT IMAGE TO TENSOR
@@ -35,7 +38,7 @@ class ImageDataset(torch.utils.data.Dataset):
         self.transform = transform
         if not self.transform:
             self.transform = transforms.Compose([
-                transforms.ToTensor(),
+                transforms.ToTensor(),  # 归一化到[0, 1] /255 HWC->C*H*W
                 transforms.Normalize(
                     mean=[0.485, 0.456, 0.406],
                     std=[0.229, 0.224, 0.225],
@@ -49,16 +52,77 @@ class ImageDataset(torch.utils.data.Dataset):
         self.thresh_df = None
         if thresh_csv:
             self.thresh_df = pd.read_csv(thresh_csv)
-            
+
         if self.transform:
             self.image = self.transform(self.image_raw).unsqueeze(0)
+
+        """self.arrs = []
+        for path in self.template_path:
+            template = cv2.imread(str(path))
+            self.arrs.append(self.kkk(template))"""
+
+    def kkk(self, template):
+        ht, wt, _ = template.shape
+        tgray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        tgray = np.array(tgray)
+        white_num = np.where(tgray == 255)[0].shape[0]
+        th_arr = 1 - white_num / (ht * wt)
+        # print(th_arr)
+
+        hi, wi, _ = self.image_raw.shape
+        igray = cv2.cvtColor(self.image_raw, cv2.COLOR_BGR2GRAY)
+
+        igray = np.array(igray)
+        # print(igray.shape)
+        arrs = igray
+        arrs[:, :wt // 2] = 1
+        arrs[:, math.ceil(-wt / 2):] = 1  # math.ceil向上舍入到最接近的整数
+        arrs[:ht // 2, :] = 1
+        arrs[math.ceil(-ht / 2):, :] = 1
+
+        kernel = np.ones((ht, wt))
+        ret, imask = cv2.threshold(igray, 0, 1, cv2.THRESH_BINARY)
+        img_bool = np.array(imask).astype("bool")
+        img_bool = ~ img_bool
+        img_int01 = img_bool.astype(np.int)
+        black_sums = cv2.filter2D(img_int01, -1, kernel)  # 用template大小的核进行均值滤波， -1 保证输入输出相同尺寸
+
+        r = (1 - black_sums[ht // 2: hi + math.ceil(-ht / 2), wt // 2: wi + math.ceil(-wt / 2)] / (ht * wt))/th_arr
+        arrs[ht // 2: hi + math.ceil(-ht / 2), wt // 2: wi + math.ceil(-wt / 2)] = r
+        # print(arrs.max())
+        arrs = np.where((arrs < 1.1) & (arrs > 0.9), 1, 0.001)
+        # arrs = np.exp(-arrs + 1)
+        # print(p1, p2)
+
+        """p1 = 0
+        p2 = 0
+        for i in range(wt // 2, wi + math.ceil(-wt / 2)):
+            for j in range(ht // 2, hi + math.ceil(-ht / 2)):
+                black_num = \
+                    np.where(igray[j - ht // 2:j + math.ceil(ht / 2), i - wt // 2: i + math.ceil(wt / 2)] == 0)[
+                        0].shape[0]
+                if j <= ht // 2 + 2 :
+                    print(black_num)
+                else:
+                    sys.exit()
+                r = (1 - black_num / (ht * wt))/th_arr
+                # print(j, i, r)
+                if r > 1.5:
+                    arrs[j, i] = np.exp(-r)
+                    p1 += 1
+                else:
+                    arrs[j, i] = 1
+                    p2 += 1
+        print(p1, p2)"""
+        return arrs
         
     def __len__(self):
         return len(self.template_names)
-    
+
     def __getitem__(self, idx):
         template_path = str(self.template_path[idx])
         template = cv2.imread(template_path)
+        image_r = self.kkk(template)
         if self.transform:
             template = self.transform(template)
         thresh = 0.7
@@ -66,13 +130,16 @@ class ImageDataset(torch.utils.data.Dataset):
             if self.thresh_df.path.isin([template_path]).sum() > 0:
                 thresh = float(self.thresh_df[self.thresh_df.path==template_path].thresh)
         return {'image': self.image, 
-                    'image_raw': self.image_raw, 
-                    'image_name': self.image_name,
-                    'template': template.unsqueeze(0), 
-                    'template_name': template_path, 
-                    'template_h': template.size()[-2],
-                   'template_w': template.size()[-1],
-                   'thresh': thresh}
+                'image_raw': self.image_raw,
+                'image_name': self.image_name,
+                'template': template.unsqueeze(0),
+                'template_name': template_path,
+                'template_h': template.size()[-2],
+                'template_w': template.size()[-1],
+                'thresh': thresh,
+                'image_r': image_r}
+
+
 
 
 # template_dir = 'template/'
@@ -87,7 +154,7 @@ class Featex():
         self.use_cuda = use_cuda
         self.feature1 = None
         self.feature2 = None
-        self.model= copy.deepcopy(model.eval())
+        self.model = copy.deepcopy(model.eval())
         self.model = self.model[:17]
         for param in self.model.parameters():
             param.requires_grad = False
@@ -147,7 +214,7 @@ class CreateModel():
         for i in range(batchsize_T):
             T_feat_i = T_feat[i].unsqueeze(0)
             I_feat_norm, T_feat_i = MyNormLayer()(self.I_feat, T_feat_i)
-            dist = torch.einsum("xcab,xcde->xabde", I_feat_norm / torch.norm(I_feat_norm, dim=1, keepdim=True), T_feat_i / torch.norm(T_feat_i, dim=1, keepdim=True))
+            dist = torch.einsum("xcab,xcde->xabde", I_feat_norm / torch.norm(I_feat_norm, dim=1, keepdim=True), T_feat_i / torch.norm(T_feat_i, dim=1, keepdim=True))  # 爱因斯坦求和约定
             conf_map = QATM(self.alpha)(dist)
             if conf_maps is None:
                 conf_maps = conf_map
@@ -161,13 +228,13 @@ class QATM():
         self.alpha = alpha
         
     def __call__(self, x):
-        batch_size, ref_row, ref_col, qry_row, qry_col = x.size()
+        batch_size, ref_row, ref_col, qry_row, qry_col = x.size()  # x a b c d
         x = x.view(batch_size, ref_row*ref_col, qry_row*qry_col)
         xm_ref = x - torch.max(x, dim=1, keepdim=True)[0]
         xm_qry = x - torch.max(x, dim=2, keepdim=True)[0]
         confidence = torch.sqrt(F.softmax(self.alpha*xm_ref, dim=1) * F.softmax(self.alpha * xm_qry, dim=2))
         conf_values, ind3 = torch.topk(confidence, 1)
-        ind1, ind2 = torch.meshgrid(torch.arange(batch_size), torch.arange(ref_row*ref_col))
+        ind1, ind2 = torch.meshgrid(torch.arange(batch_size), torch.arange(ref_row*ref_col))  # 生成网格
         ind1 = ind1.flatten()
         ind2 = ind2.flatten()
         ind3 = ind3.flatten()
@@ -238,7 +305,7 @@ def nms_multi(scores, w_array, h_array, thresh_list):
     maxes = np.max(scores.reshape(scores.shape[0], -1), axis=1)  # 取每个template匹配search图片的score最大值
     # omit not-matching templates
     scores_omit = scores[maxes > 0.1 * maxes.max()]  # 取大于最大值90%的template (t, h, w)
-    # print("scores_omit:{}".format(scores_omit.shape))
+    # print("scores_omit:{}".format(scores_omit.max()))
     indices_omit = indices[maxes > 0.1 * maxes.max()]
     # print("indices_omit:{}".format(indices_omit.shape))
     # extract candidate pixels from scores
@@ -315,8 +382,8 @@ def plot_result_multi(image_raw, boxes, indices, show=False, save_name=None, col
 
 # # RUNNING
 
-def run_one_sample(model, template, image, image_name):
-    val = model(template, image, image_name)
+def run_one_sample(model, template, image, image_name, image_r):
+    val = model(template, image, image_name)  # [batch_size, ref_row, ref_col, 1]
     if val.is_cuda:
         val = val.cpu()
     val = val.numpy()
@@ -327,12 +394,19 @@ def run_one_sample(model, template, image, image_name):
     for i in range(batch_size):
         # compute geometry average on score map
         gray = val[i,:,:,0]
+        # print(gray)
         gray = cv2.resize( gray, (image.size()[-1], image.size()[-2]) )
         h = template.size()[-2]
         w = template.size()[-1]
-        score = compute_score( gray, w, h) 
+        score = compute_score(gray, w, h)
+        # print(gray.min())
+        # print(score.shape)
         score[score>-1e-7] = score.min()
+
+        # print(score.max())
         score = np.exp(score / (h*w))
+        # score = np.multiply(score, image_r)  # 面积惩罚系数
+        # score -= image_r  # 面积惩罚常数
         # reverse number range back after computing geometry average 在计算几何平均数后反转数字范围
         scores.append(score)
     return np.array(scores)
@@ -343,8 +417,9 @@ def run_multi_sample(model, dataset):
     w_array = []
     h_array = []
     thresh_list = []
-    for data in dataset:
-        score = run_one_sample(model, data['template'], data['image'], data['image_name'])
+    for data in dataset:  # 遍历template集合
+        # print("-----------------")
+        score = run_one_sample(model, data['template'], data['image'], data['image_name'], data['image_r'])
         scores.append(score)
         w_array.append(data['template_w'])
         h_array.append(data['template_h'])
@@ -352,7 +427,7 @@ def run_multi_sample(model, dataset):
     return np.squeeze(np.array(scores), axis=1), np.array(w_array), np.array(h_array), thresh_list
 
 
-model = CreateModel(model=models.vgg19(pretrained=True).features, alpha=25, use_cuda=True)
+"""model = CreateModel(model=models.vgg19(pretrained=True).features, alpha=25, use_cuda=True)
 
 scores, w_array, h_array, thresh_list = run_multi_sample(model, dataset)
 
@@ -361,4 +436,4 @@ boxes, indices, _, _ = nms_multi(scores, w_array, h_array, thresh_list)
 d_img = plot_result_multi(dataset.image_raw, boxes, indices, show=True, save_name='result_sample.png')
 
 plt.imshow(scores[2])
-
+"""

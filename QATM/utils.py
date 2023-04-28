@@ -33,7 +33,8 @@ def compute_score( x, w, h ):
     # score of response strength
     k = np.ones( (h, w) )
     score = cv2.filter2D(x, -1, k)  # 用template大小的核进行均值滤波， -1 保证输入输出相同尺寸
-    # 只保留中心点score
+    # score = cv2.medianBlur(x, k)
+    # 只保留中心区域score
     score[:, :w//2] = 0
     score[:, math.ceil(-w/2):] = 0  # math.ceil向上舍入到最接近的整数
     score[:h//2, :] = 0

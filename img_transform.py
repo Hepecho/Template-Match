@@ -1,3 +1,5 @@
+import random
+
 import cv2
 import numpy as np
 import sys
@@ -5,16 +7,17 @@ from PIL import Image
 import os
 import shutil
 
-def affine_transform(src):
+def affine_transform(imag_path, save_path):
     # 获取图像shape
+    src = cv2.imread(imag_path)
     rows, cols = src.shape[: 2]
 
-    # 设置图像仿射变化矩阵
+    # 设置前后位置矩阵
     post1 = np.float32([[50, 50], [200, 50], [50, 200]])
     post2 = np.float32([[10, 100], [200, 50], [100, 250]])
-    M = cv2.getAffineTransform(post1, post2)
 
-    # 图像变换
+    # 仿射变换
+    M = cv2.getAffineTransform(post1, post2)
     result = cv2.warpAffine(src, M, (rows, cols))
 
     # 图像显示
@@ -25,22 +28,61 @@ def affine_transform(src):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def pers_transform(src):
+
+def pers_transform(imag_path, save_path, seed=1, r=40):
+    src = cv2.imread(imag_path)
+    height, width, _ = src.shape
+
+    template_path = os.path.join(imag_path[:imag_path[:-11].rfind('/')], 'templates', imag_path[-10:])
+    # print(template_path)
+    tem = cv2.imread(imag_path, 0)
+    tem_mask = posmask(template_path)
+    tem_array = np.array(tem_mask)
+    indexs = np.argwhere(tem_array == 255)
+    hw_min = indexs.min(axis=0) - 50
+    hw_min = np.clip(hw_min, r, min(height, width) - r)
+    hw_max = indexs.max(axis=0) + 50
+    hw_max = np.clip(hw_max, r, min(height, width) - r)
+    # indexs = indexs.tolist()
+    # print(hw_min, hw_max)
+    # print(indexs[-5:])
+    # sys.exit()
     # 设置透视变换图像矩阵
-    post1 = np.float32([[55, 65], [288, 49], [28, 237], [239, 240]])
-    post2 = np.float32([[0, 0], [200, 0], [0, 200], [200, 200]])
+    random.seed(seed)
+    bias_list = range(-r, r + 1)
+    b2 = np.array(random.sample(bias_list, 4))
+    b2 = b2.reshape(b2.shape[0], 1)
+    # print(b2)
+    # ini_pos = [hw_min, [hw_max[0], hw_min[1]], [hw_min[0], hw_max[1]], hw_max]
+    ini_pos = [hw_min[::-1], [hw_max[0], hw_min[1]][::-1], [hw_min[0], hw_max[1]][::-1], hw_max[::-1]]
+    # print(ini_pos)
+    post1 = np.float32(ini_pos)
+    new_pos = ini_pos + b2
+    post2 = np.float32(new_pos)
+    # print(ini_pos)
+    # print(new_pos)
     M = cv2.getPerspectiveTransform(post1, post2)
 
     # 图像变换
-    result = cv2.warpPerspective(src, M, (200, 200))
+    result = cv2.warpPerspective(src, M, (width, height))
 
-    # 图像显示
-    cv2.imshow("scr", src)
-    cv2.imshow("result", result)
+    cv2.imwrite(save_path, result)
 
-    # 等待窗口
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+def muti_pers(parent_path, r=40):
+    """
+    批量投影变换
+    :param parent_path: mask路径
+    :return: 无
+    """
+    real_path = os.path.join(parent_path, 'real_mask_' + str(r) + 'pt')
+    fake_path = os.path.join(parent_path, 'fake_mask_' + str(r) + 'pt')
+    names = os.listdir(fake_path)
+    for i, name in enumerate(names):  # 子目录名
+        fake_child_path = os.path.join(fake_path, name)
+        real_child_path = os.path.join(real_path, name)
+        # print(real_path)
+        pers_transform(fake_child_path, fake_child_path, i, r)
+        pers_transform(real_child_path, real_child_path, i, r)
 
 def bg_add_fg(bg, fg, x, y):
     r0, c0 = bg.shape
@@ -74,6 +116,7 @@ def bg_add_fg(bg, fg, x, y):
     cv2.destroyAllWindows()
     return bg
 
+
 def bg_merge_fg(bg, fg, x, y):
     r1, c1, _ = fg.shape
     roi = bg[x:x + r1, y:y + c1]
@@ -91,6 +134,7 @@ def bg_merge_fg(bg, fg, x, y):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     return bg
+
 
 def face_mask(src, face, m, n):
     r0, c0 = src.shape  # 320, 252
@@ -114,12 +158,14 @@ def face_mask(src, face, m, n):
     cv2.destroyAllWindows()
     return src
 
+
 def imgconvert(imag_path, save_path, flag='L'):
     imgsrc = Image.open(imag_path)
     print(imgsrc.getbands())
     imgret = imgsrc.convert(flag)
     print(imgret.getbands())
     imgret.save(save_path)
+
 
 def one_bgaddedge(imag_path, save_path, pix):
     imgsrc = cv2.imread(imag_path, 1)
@@ -149,6 +195,7 @@ def one_bgaddedge(imag_path, save_path, pix):
                 # imgsrc[h, w] = (255, 255, 255)
     cv2.imwrite(save_path, imgsrc[left-pix:right+pix+1, top-pix:bottom+pix+1])
 
+
 def create_datatree():
     template_path = './samples/template'
     image_path = './samples/image'
@@ -166,15 +213,77 @@ def create_datatree():
         new_file = os.path.join(sub_ipath, name[:-4]+'_fake.png')
         shutil.copy(fake_path+name, new_file)
         shutil.copy('./samples/Samples_left/'+name, sub_ipath)
+
+
 def multi_bgaddedge(parent_path, pix):
     names = os.listdir(parent_path)
     for name in names:  # 子目录名
-        sub_path = os.path.join(parent_path, name[:-4])
-        if not os.path.exists(sub_path):
-            os.makedirs(sub_path)
-        shutil.copy(parent_path+name, sub_path)
-        child_path = os.path.join(sub_path, name)
+        if name[-4:] == '.png':
+            sub_path = os.path.join(parent_path, name[:-4])
+            if not os.path.exists(sub_path):
+                os.makedirs(sub_path)
+            shutil.copy(parent_path + name, sub_path)
+            os.remove(parent_path + name)
+            child_path = os.path.join(sub_path, name)
+        else:
+            child_path = os.path.join(parent_path, name, name+'.png')
         one_bgaddedge(child_path, child_path, pix)
+
+
+def get_color(template_path):
+    img1 = cv2.imread(template_path, 1)
+    h, w, _ = img1.shape
+    return img1[h//2, w//2]
+
+
+def posmask(template_path):
+    tem_img = cv2.imread(template_path, 0)
+    ret, tmask = cv2.threshold(tem_img, 0, 255, cv2.THRESH_BINARY)
+    return tmask
+
+
+def handcraft_color(parent_path, needmask=False, flag='same'):
+    color_list = [0, 0, 64, 64, 64, 128, 128, 128, 192, 192, 192]
+    names = os.listdir(parent_path)
+    for name in names:  # 子目录名
+        child_path = os.path.join(parent_path, name)
+        imgsrc = cv2.imread(child_path, 1)
+        height, width, _ = imgsrc.shape
+        if needmask:
+            template_path = os.path.join(parent_path[:parent_path[:-1].rfind('/')], 'templates', name)
+            imgsrc = cv2.bitwise_and(imgsrc, imgsrc, mask=posmask(template_path))
+        # c = tuple(random.sample(color_list, 3))
+        template_path = os.path.join('./samples_multi10_p6/templates_2pix', name[:-4], name)
+        # print(template_path)
+        tb, tg, tr = get_color(template_path)
+        if flag == 'same':
+            nb, ng, nr = tb, tg, tr
+        elif flag == 'cut':
+            nb, ng, nr = 0, 0, 0
+        elif flag == 're-w':
+            nb, ng, nr = 255, 255, 255
+        else:
+            nb, ng, nr = 0, 0, 0
+        for h in range(0, height):
+            for w in range(0, width):
+                (b, g, r) = imgsrc[h, w]
+                if (b, g, r) != (tb, tg, tr) and (b, g, r) != (0, 0, 0):
+                    imgsrc[h, w] = nb, ng, nr
+        cv2.imwrite(child_path, imgsrc)
+
+
+def multi_b2w(parent_path):
+    names = os.listdir(parent_path)
+    for name in names:  # 子目录名
+        child_path = os.path.join(parent_path, name, name + '.png')
+        imgsrc = cv2.imread(child_path, 1)
+        height, width, _ = imgsrc.shape
+        for h in range(0, height):
+            for w in range(0, width):
+                (b, g, r) = imgsrc[h, w]
+                if (b, g, r) == (255, 255, 255):
+                    imgsrc[h, w] = (0, 0, 0)
+        cv2.imwrite(child_path, imgsrc)
 
 
 if __name__ == '__main__':
@@ -190,7 +299,15 @@ if __name__ == '__main__':
     # imgsrc = cv2.copyMakeBorder(imgsrc, 49, 49, 49, 49, cv2.BORDER_CONSTANT, value=[255, 255, 255])
     # cv2.imwrite(save_path, imgsrc)
     # ----------------------------------multi samples add x_pix edge without bg-----------------------------------------
-    multi_bgaddedge('./samples_multi/templates_PPP/', pix=2)
+    # multi_bgaddedge('./samples_multi10_p6/templates_50pix/', pix=50)
+    # ----------------------------------multi masks transform bg--------------------------------------------------------
+    # multi_b2w('./samples_single/templates_2pix_b/')
+    # -------------------------------------------handcraft color--------------------------------------------------------
+    # handcraft_color('./samples_multi10_p6/fake_mask_re-w/', needmask=False, flag='re-w')
+    # ---------------------------------------affine/perspective transform-----------------------------------------------
+    # affine_transform('./example/image/I5_6/000340.png', './example/affi.png')
+    # pers_transform('./samples_multi10_p6/fake_mask/000200.png', './example/pers.png')
+    muti_pers('./samples_multi10_p6/', r=30)
     sys.exit()
     # ------------------------------------create sample (with face mask)------------------------------------------------
     # 图像输入

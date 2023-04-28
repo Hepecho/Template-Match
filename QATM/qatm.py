@@ -4,10 +4,11 @@ import torchvision
 from torchvision import models, transforms, utils
 import argparse
 from utils import *
+from qatm_pytorch import *
 
 # +
 # import functions and classes from qatm_pytorch.py
-print("import qatm_pytorch.py...")
+"""print("import qatm_pytorch.py...")
 import ast
 import types
 import sys
@@ -24,14 +25,14 @@ code = compile(p, "mod.py", 'exec')
 sys.modules["mod"] = module
 exec(code,  module.__dict__)
 
-from mod import *
+from mod import *"""
 # -
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='QATM Pytorch Implementation')
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('-s', '--sample_image', default='../samples_multi/real_mask/000000.png')
-    parser.add_argument('-t', '--template_images_dir', default='../samples_multi/templates/')
+    parser.add_argument('-s', '--sample_image', default='../example/image/I5_6/000340_change.png')
+    parser.add_argument('-t', '--template_images_dir', default='../example/template/T6/')
     parser.add_argument('--alpha', type=float, default=25)
     parser.add_argument('--thresh_csv', type=str, default='thresh_template.csv')
     args = parser.parse_args()
@@ -48,11 +49,21 @@ if __name__ == '__main__':
     # print(scores)
     print("nms...")
     boxes, indices, max_score, mean_score, shape = nms_multi(scores, w_array, h_array, thresh_list)
-    print("multi:")
-    print(max_score)
-    print(mean_score)
-    print(shape)
-    _ = plot_result_multi(dataset.image_raw, boxes, indices, show=False, save_name='../output/result_6.png')
+    print("score:")
+    print("QATM: " + str(max_score))
+    # print("mean:" + str(mean_score))
+    # print(shape)
+    # 1.读取图片
+    img = cv2.imread(image_path)
+    template_path = os.path.join(template_dir, os.listdir(template_dir)[0])
+    template = cv2.imread(template_path)
+    h, w = template.shape[:2]
+    # 2.匹配模板
+    res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+    print("NCC: " + str(max_val))
+
+    _ = plot_result_multi(dataset.image_raw, boxes, indices, show=True, save_name='../output/result_6.png')
     print("result.png was saved")
 
 
