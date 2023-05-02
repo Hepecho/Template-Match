@@ -167,33 +167,20 @@ def imgconvert(imag_path, save_path, flag='L'):
     imgret.save(save_path)
 
 
-def one_bgaddedge(imag_path, save_path, pix):
-    imgsrc = cv2.imread(imag_path, 1)
-    # 填充边界
-    imgsrc = cv2.copyMakeBorder(imgsrc, pix, pix, pix, pix, cv2.BORDER_CONSTANT, value=[0, 0, 0])
-    height, width, _ = imgsrc.shape
-    # dst = np.zeros((height, width, 3), np.uint8)
-    left, top = height, width
-    right, bottom = 0, 0
-    for h in range(0, height):
-        for w in range(0, width):
-            (b, g, r) = imgsrc[h, w]
-            if (b, g, r) == (0, 0, 0) or (b, g, r) == (255, 255, 255):  # black or white
-                imgsrc[h, w] = (255, 255, 255)
-            else:
-                if h < left:
-                    left = h
-                if h > right:
-                    right = h
-                if w < top:
-                    top = w
-                if w > bottom:
-                    bottom = w
-    # for h in range(left-1, right+2):
-        # for w in range(top-1, bottom+2):
-            # if h == left-1 or h == right+1 or w == top-1 or w == bottom+1:
-                # imgsrc[h, w] = (255, 255, 255)
-    cv2.imwrite(save_path, imgsrc[left-pix:right+pix+1, top-pix:bottom+pix+1])
+def one_bgaddedge(imag_path, save_path, pix=0):
+    img_src = cv2.imread(imag_path, 1)
+    img_gray = cv2.imread(imag_path, 0)
+    height, width = img_gray.shape
+
+    ret, img_mask = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY)
+    points = np.argwhere(img_mask > 0)
+    left = np.min(points[:, 1])
+    right = np.max(points[:, 1])
+    top = np.min(points[:, 0])
+    bottom = np.max(points[:, 0])
+    # print(left, right, top, bottom)
+
+    cv2.imwrite(save_path, img_src[top:bottom+1, left:right+1])
 
 
 def create_datatree():
@@ -215,18 +202,10 @@ def create_datatree():
         shutil.copy('./samples/Samples_left/'+name, sub_ipath)
 
 
-def multi_bgaddedge(parent_path, pix):
+def multi_bgaddedge(parent_path, pix=0):
     names = os.listdir(parent_path)
     for name in names:  # 子目录名
-        if name[-4:] == '.png':
-            sub_path = os.path.join(parent_path, name[:-4])
-            if not os.path.exists(sub_path):
-                os.makedirs(sub_path)
-            shutil.copy(parent_path + name, sub_path)
-            os.remove(parent_path + name)
-            child_path = os.path.join(sub_path, name)
-        else:
-            child_path = os.path.join(parent_path, name, name+'.png')
+        child_path = os.path.join(parent_path, name)
         one_bgaddedge(child_path, child_path, pix)
 
 
@@ -299,7 +278,8 @@ if __name__ == '__main__':
     # imgsrc = cv2.copyMakeBorder(imgsrc, 49, 49, 49, 49, cv2.BORDER_CONSTANT, value=[255, 255, 255])
     # cv2.imwrite(save_path, imgsrc)
     # ----------------------------------multi samples add x_pix edge without bg-----------------------------------------
-    # multi_bgaddedge('./samples_multi10_p6/templates_50pix/', pix=50)
+    multi_bgaddedge('./samples_multi10_p6/templates_0pix/')
+    # one_bgaddedge('./samples_multi10_p6/templates/000211.png', './samples_multi10_p6/templates/000211.png')
     # ----------------------------------multi masks transform bg--------------------------------------------------------
     # multi_b2w('./samples_single/templates_2pix_b/')
     # -------------------------------------------handcraft color--------------------------------------------------------
@@ -307,7 +287,7 @@ if __name__ == '__main__':
     # ---------------------------------------affine/perspective transform-----------------------------------------------
     # affine_transform('./example/image/I5_6/000340.png', './example/affi.png')
     # pers_transform('./samples_multi10_p6/fake_mask/000200.png', './example/pers.png')
-    muti_pers('./samples_multi10_p6/', r=30)
+    # muti_pers('./samples_multi10_p6/', r=30)
     sys.exit()
     # ------------------------------------create sample (with face mask)------------------------------------------------
     # 图像输入
